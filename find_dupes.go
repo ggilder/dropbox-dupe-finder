@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/dustin/go-humanize"
+	"github.com/dustin/go-humanize/english"
 	"github.com/jessevdk/go-flags"
 	"github.com/tj/go-dropbox"
 	"golang.org/x/text/unicode/norm"
@@ -26,6 +27,19 @@ type DropboxManifest map[string][]*File
 type scanProgressUpdate struct {
 	Count             int
 	RawDuplicateCount int
+}
+
+type Duplication struct {
+	ContentHash    string
+	Files          []*File
+	DuplicateCount int
+	DuplicateSize  uint64
+}
+
+type DuplicateReport struct {
+	Duplications        []*Duplication
+	TotalDuplicateCount int
+	TotalDuplicateSize  uint64
 }
 
 func main() {
@@ -112,7 +126,8 @@ func main() {
 	// wait until scan is complete, then close progress reporting channel
 	wg.Wait()
 	close(progressChan)
-	fmt.Printf("Finished scanning Dropbox.\n\n")
+	// TODO figure out why duplicate line of stderr gets printed here
+	fmt.Printf("\nFinished scanning Dropbox.\n\n")
 
 	// check for fatal errors
 	if dropboxErr != nil {
@@ -120,21 +135,77 @@ func main() {
 	}
 
 	// Analyze results for dupe info
-	// TODO implement
-	// - filter based on size, path (like git stuff or maybe all dotfiles), other factors?
-	// - collect total savings info, total number of dupes
-	// - (harder) compute hashes of directories to find wholly duplicated directories
-	for hash, files := range dropboxManifest {
+	report := analyzeDuplicates(dropboxManifest)
+	fmt.Printf("%d duplicate file groups found (%d files, %s).\n\n", len(report.Duplications), report.TotalDuplicateCount, humanize.Bytes(report.TotalDuplicateSize))
+	group := 1
+	for _, duplication := range report.Duplications {
+		fmt.Printf(
+			"Group %d (%s, %s)\n",
+			group,
+			english.Plural(duplication.DuplicateCount, "duplicate file", ""),
+			humanize.Bytes(duplication.DuplicateSize),
+		)
+		for _, f := range duplication.Files {
+			fmt.Println(f.Path)
+		}
+		fmt.Println("")
+		group++
+	}
+	fmt.Println("")
+}
+
+func analyzeDuplicates(manifest DropboxManifest) (report *DuplicateReport) {
+	// TODO (stretch goal) compute hashes of directories to find wholly duplicated directories (before filtering?)
+	report = &DuplicateReport{}
+	for hash, files := range manifest {
 		if len(files) <= 1 {
 			continue
 		}
-		fmt.Println(hash)
-		for _, f := range files {
-			fmt.Printf("%s (%s)\n", f.Path, humanize.Bytes(f.Size))
+		filteredFiles := filterDuplicateFiles(files)
+		if len(filteredFiles) <= 1 {
+			continue
 		}
-		fmt.Println("")
+		duplicateCount := 0
+		duplicateSize := uint64(0)
+		for idx, f := range filteredFiles {
+			// Don't count first file since we still would presumably keep one
+			if idx == 0 {
+				continue
+			}
+			duplicateCount++
+			// TODO implement some kind of sanity check to make sure all files in a group have the same size?
+			duplicateSize += f.Size
+		}
+
+		report.TotalDuplicateCount += duplicateCount
+		report.TotalDuplicateSize += duplicateSize
+		report.Duplications = append(report.Duplications, &Duplication{
+			ContentHash:    hash,
+			Files:          filteredFiles,
+			DuplicateCount: duplicateCount,
+			DuplicateSize:  duplicateSize,
+		})
 	}
-	fmt.Println("")
+	return
+}
+
+func filterDuplicateFiles(files []*File) (filteredFiles []*File) {
+	for _, file := range files {
+		if !ignoreFile(file) {
+			filteredFiles = append(filteredFiles, file)
+		}
+	}
+	return
+}
+
+func ignoreFile(file *File) bool {
+	// TODO extract config
+	if file.Size < 1000 {
+		return true
+	}
+	// TODO filter path (like git files or maybe all dotfiles)
+	// .....
+	return false
 }
 
 func getDropboxManifest(progressChan chan<- *scanProgressUpdate, dbxClient *dropbox.Client, rootPath string) (manifest DropboxManifest, err error) {
