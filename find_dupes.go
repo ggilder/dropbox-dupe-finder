@@ -38,7 +38,6 @@ func main() {
 	var opts struct {
 		Verbose            bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
 		RemoteRoot         string `short:"r" long:"remote" description:"Directory in Dropbox to verify" default:""`
-		WorkerCount        int    `short:"w" long:"workers" description:"Number of worker threads to use (defaults to 8)" default:"8"`
 		FreeMemoryInterval int    `long:"free-memory-interval" description:"Interval (in seconds) to manually release unused memory back to the OS on low-memory systems" default:"0"`
 	}
 
