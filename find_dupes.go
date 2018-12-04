@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -186,6 +187,10 @@ func analyzeDuplicates(manifest DropboxManifest) (report *DuplicateReport) {
 			DuplicateSize:  duplicateSize,
 		})
 	}
+	// sort duplications by size (descending)
+	sort.Slice(report.Duplications, func(i, j int) bool {
+		return report.Duplications[i].DuplicateSize >= report.Duplications[j].DuplicateSize
+	})
 	return
 }
 
