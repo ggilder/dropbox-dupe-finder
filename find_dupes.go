@@ -66,7 +66,7 @@ func main() {
 	// paths of the returned entries it's easier to use "/". Conversion is
 	// handled before the API call.
 	remoteRoot := opts.RemoteRoot
-	if remoteRoot[0] != '/' {
+	if remoteRoot == "" || remoteRoot[0] != '/' {
 		remoteRoot = "/" + remoteRoot
 	}
 
