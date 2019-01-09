@@ -205,7 +205,7 @@ func filterDuplicateFiles(files []*File) (filteredFiles []*File) {
 
 func ignoreFile(file *File) bool {
 	// TODO extract config
-	if file.Size < 1000 {
+	if file.Size < 10000 {
 		return true
 	}
 	// TODO filter path (like git files or maybe all dotfiles)
