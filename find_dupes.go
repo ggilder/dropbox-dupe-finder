@@ -1,20 +1,23 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/dustin/go-humanize/english"
-	"github.com/jessevdk/go-flags"
-	"github.com/tj/go-dropbox"
-	"golang.org/x/text/unicode/norm"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dustin/go-humanize"
+	"github.com/jessevdk/go-flags"
+	"github.com/tj/go-dropbox"
+	"golang.org/x/text/unicode/norm"
 )
 
 // File stores the result of either Dropbox API or local file listing
@@ -138,21 +141,29 @@ func main() {
 	// Analyze results for dupe info
 	report := analyzeDuplicates(dropboxManifest)
 	fmt.Printf("%d duplicate file groups found (%d files, %s).\n\n", len(report.Duplications), report.TotalDuplicateCount, humanize.Bytes(report.TotalDuplicateSize))
-	group := 1
-	for _, duplication := range report.Duplications {
-		fmt.Printf(
-			"Group %d (%s, %s)\n",
-			group,
-			english.Plural(duplication.DuplicateCount, "duplicate file", ""),
-			humanize.Bytes(duplication.DuplicateSize),
-		)
-		for _, f := range duplication.Files {
-			fmt.Println(f.Path)
-		}
-		fmt.Println("")
-		group++
+
+	csvDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
 	}
-	fmt.Println("")
+	csvName := fmt.Sprintf("duplicates-%s.csv", time.Now().Format("20060102T150405"))
+	csvPath := filepath.Join(csvDir, csvName)
+	csvFile, err := os.Create(csvPath)
+	if err != nil {
+		log.Fatalf("failed to create file: %s", err)
+	}
+	defer csvFile.Close()
+	csvWriter := csv.NewWriter(csvFile)
+	csvWriter.Write([]string{"Duplicate Count", "Duplicate Size", "Files"})
+
+	for _, duplication := range report.Duplications {
+		row := []string{strconv.Itoa(duplication.DuplicateCount), strconv.Itoa(int(duplication.DuplicateSize))}
+		for _, f := range duplication.Files {
+			row = append(row, f.Path)
+		}
+		csvWriter.Write(row)
+	}
+	fmt.Printf("Wrote details to %s\n", csvPath)
 }
 
 func analyzeDuplicates(manifest DropboxManifest) (report *DuplicateReport) {
